@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Graphy - Image Graph Editor</title>
+    <link rel="icon" href="image.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#ef6f4a" />
+    <meta property="og:title" content="Graphy - Image Graph Editor" />
+    <meta property="og:description" content="Build and edit image-based graphs with paths, nodes, and overlays." />
+    <meta property="og:image" content="https://graphy-prod.web.app/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://graphy-prod.web.app/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://graphy-prod.web.app/og.jpg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="brand">
+          <span class="brand-mark">Graphy</span>
+          <span class="brand-sub">image graph studio</span>
+        </div>
+
+        <section class="panel">
+          <h2>Image</h2>
+          <div class="row">
+            <label class="file-input">
+              <input id="imageInput" type="file" accept="image/*" />
+              <span>Import image</span>
+            </label>
+            <label class="file-input ghost">
+              <input id="jsonInput" type="file" accept="application/json" />
+              <span>Import JSON</span>
+            </label>
+          </div>
+          <div class="image-info">
+            <div>
+              <span class="muted">Name</span>
+              <strong id="imageName">-</strong>
+            </div>
+            <div>
+              <span class="muted">Size</span>
+              <strong id="imageSize">-</strong>
+            </div>
+          </div>
+          <div class="row">
+            <button id="fitView" class="ghost">Fit</button>
+            <button id="clearProject" class="ghost">Clear</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Actions</h2>
+          <div class="row">
+            <button id="exportJson">Export JSON</button>
+            <button id="exportPng">Export PNG</button>
+          </div>
+          <label class="select">
+            <span>PNG overlay</span>
+            <select id="pngMode">
+              <option value="visible">Visible paths</option>
+              <option value="all">All paths</option>
+              <option value="none">Graph only</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>Paths</h2>
+          <div id="pathsList" class="paths"></div>
+        </section>
+
+        <section class="panel help">
+          <h2>Shortcuts</h2>
+          <ul>
+            <li><strong>Left click</strong>: create node/edge</li>
+            <li><strong>Right click</strong>: delete node/edge</li>
+            <li><strong>Shift + click</strong>: start/extend/truncate path</li>
+            <li><strong>Wheel</strong>: zoom/pan</li>
+            <li><strong>Ctrl+Z / Ctrl+Y</strong>: undo / redo</li>
+          </ul>
+        </section>
+      </aside>
+
+      <main id="workspace">
+        <div id="canvasContainer">
+          <canvas id="graphCanvas"></canvas>
+          <input id="nodeLabelEditor" class="label-editor hidden" />
+        </div>
+        <div id="statusBar">
+          <span id="statusText">Load an image to begin.</span>
+          <span id="stats">Nodes: 0 · Edges: 0</span>
+        </div>
+      </main>
+    </div>
+
+    <div id="toastContainer"></div>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

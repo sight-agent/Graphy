@@ -1,0 +1,30 @@
+{
+  "name": "Graphy",
+  "short_name": "Graphy",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f0e8",
+  "theme_color": "#ef6f4a",
+  "screenshots": [
+    {
+      "src": "/screenshots/desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
