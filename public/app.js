@@ -1639,12 +1639,15 @@ updateUndoRedoButtons();
 syncImageOpacityUi();
 render();
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
-      .then((registration) => registration.update())
-      .catch(() => {});
+	if ("serviceWorker" in navigator) {
+	  window.addEventListener("load", () => {
+	    const appScriptUrl =
+	      document.querySelector("script[src$='app.js'],script[src*='app.js']")?.src || window.location.href;
+	    const swUrl = new URL("sw.js", appScriptUrl);
+	    navigator.serviceWorker
+	      .register(swUrl, { updateViaCache: "none" })
+	      .then((registration) => registration.update())
+	      .catch(() => {});
 
     let reloadedForSw = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {

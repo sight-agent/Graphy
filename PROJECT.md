@@ -1,3 +1,11 @@
+## Deployment
+
+This project is deployed via **GitHub Pages** (GitHub Actions) from the static output in `dist/`.
+
+- Build locally: `npm run build`
+- Run tests: `npm test`
+- The deployed site is served from a subpath on Pages (`/<repo>/`), so asset/service-worker/manifest URLs are kept relative.
+
 Di seguito una **specifica completa** (webapp) coerente con tutte le scelte che hai fissato, con la semplificazione “lista percorsi + occhio + matita” e con vincoli di integrità (niente delete di elementi usati da percorsi salvati).
 
 ---
@@ -347,4 +355,3 @@ Implementazione: stack di “azioni” con `do/undo`.
 
   * se sta scegliendo estremo attivo → annulla selezione estremo (rimane in edit ma non può appendere finché non seleziona)
   * se in edit path → disattiva matita (opzionale) o solo deseleziona estremo (decidi; raccomandato: deseleziona estremo)
-

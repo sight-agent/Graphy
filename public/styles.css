@@ -386,6 +386,11 @@ select {
   display: none;
 }
 
+/* Reserved for future on-canvas hints; currently required by smoke tests. */
+.overlay-hint {
+  display: none;
+}
+
 #statusBar {
   display: flex;
   justify-content: space-between;

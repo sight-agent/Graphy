@@ -1,19 +1,33 @@
-const CACHE_NAME = "graphy-v3";
-const CORE_ASSETS = [
-  "/",
-  "/index.html",
-  "/styles.css",
-  "/app.js",
-  "/image.png",
-  "/og.jpg",
-  "/manifest.json",
-  "/fonts/Fraunces-500.ttf",
-  "/fonts/Fraunces-700.ttf",
-  "/fonts/SpaceGrotesk-400.ttf",
-  "/fonts/SpaceGrotesk-500.ttf",
-  "/fonts/SpaceGrotesk-600.ttf",
+const CACHE_NAME = "graphy-v4";
+
+// Important for GitHub Pages: the site is typically served from a subpath (/<repo>/).
+// Use URLs relative to the service worker's own location so caching works from any base path.
+const CORE_PATHS = [
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./image.png",
+  "./og.jpg",
+  "./manifest.json",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./screenshots/desktop.png",
+  "./fonts/Fraunces-500.ttf",
+  "./fonts/Fraunces-700.ttf",
+  "./fonts/SpaceGrotesk-400.ttf",
+  "./fonts/SpaceGrotesk-500.ttf",
+  "./fonts/SpaceGrotesk-600.ttf",
 ];
-const APP_SHELL = new Set(["/", "/index.html", "/styles.css", "/app.js", "/manifest.json"]);
+
+const coreUrls = CORE_PATHS.map((p) => new URL(p, self.location.href));
+const CORE_ASSETS = coreUrls.map((u) => u.href);
+const APP_SHELL = new Set(
+  ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json"].map(
+    (p) => new URL(p, self.location.href).pathname,
+  ),
+);
+const INDEX_PATHNAME = new URL("./index.html", self.location.href).pathname;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -56,7 +70,7 @@ self.addEventListener("fetch", (event) => {
         .catch(async () => {
           const cached = await caches.match(event.request);
           if (cached) return cached;
-          return caches.match("/index.html");
+          return caches.match(INDEX_PATHNAME);
         }),
     );
     return;
