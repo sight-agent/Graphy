@@ -18,6 +18,7 @@ const nodeLabelEditor = document.getElementById("nodeLabelEditor");
 const exportJsonBtn = document.getElementById("exportJson");
 const exportPngBtn = document.getElementById("exportPng");
 const pngModeSelect = document.getElementById("pngMode");
+const imageOpacityInput = document.getElementById("imageOpacity");
 
 const NODE_RADIUS = 10;
 const EDGE_HIT_TOL = 7;
@@ -25,6 +26,7 @@ const EDGE_WIDTH = 2;
 const PATH_WIDTH = 4;
 const ACTIVE_PATH_WIDTH = 5;
 const HOVER_RING = 14;
+const MAP_FONT_SCALE = 1.5;
 
 const PATH_COLORS = [
   "#2a9d8f",
@@ -54,6 +56,7 @@ const state = {
     panX: 0,
     panY: 0,
   },
+  imageOpacity: 1,
   undoStack: [],
   redoStack: [],
   nodeCounter: 1,
@@ -103,6 +106,11 @@ function updateStats() {
   statsEl.textContent = `Nodes: ${state.nodes.length} · Edges: ${state.edges.length}`;
 }
 
+function syncImageOpacityUi() {
+  const percent = Math.round(state.imageOpacity * 100);
+  imageOpacityInput.value = String(percent);
+}
+
 function edgeKey(a, b) {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
@@ -115,9 +123,90 @@ function getPathById(pathId) {
   return state.paths.find((path) => path.pathId === pathId);
 }
 
+function getNodeDisplayName(nodeId) {
+  const node = getNodeById(nodeId);
+  if (!node) return nodeId;
+  const label = (node.label || "").trim();
+  return label || node.id;
+}
+
+function getPathDisplayNodeIds(path) {
+  const ids = [...path.nodeIds];
+  if (
+    state.activePathId === path.pathId &&
+    state.activeAppendEnd &&
+    state.activeAppendEnd.pathId === path.pathId &&
+    state.activeAppendEnd.endIndex === 0
+  ) {
+    return ids.reverse();
+  }
+  return ids;
+}
+
 function findEdge(a, b) {
   const key = edgeKey(a, b);
   return state.edges.find((edge) => edgeKey(edge.a, edge.b) === key);
+}
+
+function parseWeightValue(raw) {
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    const fraction = trimmed.match(/^1\/(\d+)$/);
+    if (fraction) {
+      const denom = Number(fraction[1]);
+      if (denom >= 2) return 1 / denom;
+    }
+    const numberFromString = Number(trimmed);
+    if (Number.isFinite(numberFromString) && numberFromString > 0) return numberFromString;
+    return 1;
+  }
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return 1;
+}
+
+function normalizeWeightValue(raw) {
+  const value = parseWeightValue(raw);
+  if (value >= 1) return Math.max(1, Math.round(value));
+  const denom = Math.max(2, Math.round(1 / value));
+  return 1 / denom;
+}
+
+function normalizeEdge(edge) {
+  return {
+    a: edge.a,
+    b: edge.b,
+    weight: normalizeWeightValue(edge.weight),
+  };
+}
+
+function getEdgeWeight(a, b) {
+  const edge = findEdge(a, b);
+  return edge ? edge.weight : 1;
+}
+
+function formatWeightLabel(weight) {
+  if (weight < 1) {
+    return `1/${Math.round(1 / weight)}`;
+  }
+  return String(Math.round(weight));
+}
+
+function stepEdgeWeight(currentWeight, direction) {
+  const weight = normalizeWeightValue(currentWeight);
+  if (direction < 0) {
+    if (weight > 1) return weight - 1;
+    const denom = Math.round(1 / weight);
+    return 1 / (denom + 1);
+  }
+  if (direction > 0) {
+    if (weight < 1) {
+      const denom = Math.round(1 / weight) - 1;
+      if (denom <= 1) return 1;
+      return 1 / denom;
+    }
+    return weight + 1;
+  }
+  return weight;
 }
 
 function createNodeId() {
@@ -190,7 +279,7 @@ function saveSnapshot() {
 
 function applySnapshot(snapshot) {
   state.nodes = structuredClone(snapshot.nodes);
-  state.edges = structuredClone(snapshot.edges);
+  state.edges = structuredClone(snapshot.edges).map(normalizeEdge);
   state.paths = structuredClone(snapshot.paths);
   state.selectedNodeId = snapshot.selectedNodeId;
   state.activePathId = snapshot.activePathId;
@@ -235,11 +324,13 @@ function resetProject() {
   state.redoStack = [];
   state.nodeCounter = 1;
   state.pathCounter = 1;
+  state.imageOpacity = 1;
   state.projectLoadedFromJson = false;
   state.expectedImage = null;
   rebuildProtectedSets();
   updatePathsList();
   updateUndoRedoButtons();
+  syncImageOpacityUi();
   updateStats();
   render();
 }
@@ -297,7 +388,7 @@ function loadProjectFromJson(payload) {
     return;
   }
   state.nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
-  state.edges = Array.isArray(payload.edges) ? payload.edges : [];
+  state.edges = Array.isArray(payload.edges) ? payload.edges.map(normalizeEdge) : [];
   state.paths = Array.isArray(payload.paths) ? payload.paths : [];
   state.selectedNodeId = null;
   state.activePathId = null;
@@ -312,11 +403,13 @@ function loadProjectFromJson(payload) {
   rebuildProtectedSets();
   updatePathsList();
   updateUndoRedoButtons();
-  imageNameEl.textContent = "-";
+  imageNameEl.textContent = state.image ? state.image.name : "(no image loaded)";
   imageSizeEl.textContent = `${payload.imageWidth} x ${payload.imageHeight}`;
   updateOverlay();
   render();
-  setStatus("Project imported from JSON. Import an image to continue.");
+  setStatus(
+    state.image ? "Project imported from JSON." : "Project imported from JSON. Import an image to continue.",
+  );
 }
 
 function fitToView() {
@@ -445,6 +538,7 @@ function updatePathsList() {
         state.activePathId = path.pathId;
         state.activeAppendEnd = null;
         state.draftPathId = null;
+        state.selectedNodeId = null;
       }
       updatePathsList();
       updateOverlay();
@@ -496,7 +590,10 @@ function updatePathsList() {
 
     const pathString = document.createElement("div");
     pathString.className = "path-string";
-    pathString.textContent = path.nodeIds.join("-") || "(vuoto)";
+    pathString.textContent =
+      getPathDisplayNodeIds(path)
+        .map((nodeId) => getNodeDisplayName(nodeId))
+        .join("-") || "(empty)";
 
     info.appendChild(labelWrapper);
     info.appendChild(meta);
@@ -544,7 +641,7 @@ function addEdge(a, b) {
   if (a === b) return;
   const existing = findEdge(a, b);
   if (!existing) {
-    state.edges.push({ a, b });
+    state.edges.push({ a, b, weight: 1 });
   }
 }
 
@@ -577,35 +674,46 @@ function buildAdjacency() {
   state.edges.forEach((edge) => {
     if (!adjacency.has(edge.a)) adjacency.set(edge.a, []);
     if (!adjacency.has(edge.b)) adjacency.set(edge.b, []);
-    adjacency.get(edge.a).push(edge.b);
-    adjacency.get(edge.b).push(edge.a);
+    adjacency.get(edge.a).push({ to: edge.b, weight: edge.weight });
+    adjacency.get(edge.b).push({ to: edge.a, weight: edge.weight });
   });
   return adjacency;
 }
 
-function bfsShortestPath(startId, targetId) {
+function shortestPathByWeight(startId, targetId) {
   if (startId === targetId) return [startId];
   const adjacency = buildAdjacency();
-  const queue = [startId];
-  const visited = new Set([startId]);
+  const dist = new Map();
   const prev = new Map();
+  const visited = new Set();
+  state.nodes.forEach((node) => dist.set(node.id, Infinity));
+  dist.set(startId, 0);
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-    const neighbors = adjacency.get(current) || [];
-    for (const neighbor of neighbors) {
-      if (visited.has(neighbor)) continue;
-      visited.add(neighbor);
-      prev.set(neighbor, current);
-      if (neighbor === targetId) {
-        queue.length = 0;
-        break;
+  while (visited.size < state.nodes.length) {
+    let current = null;
+    let best = Infinity;
+    dist.forEach((value, nodeId) => {
+      if (!visited.has(nodeId) && value < best) {
+        best = value;
+        current = nodeId;
       }
-      queue.push(neighbor);
+    });
+    if (!current || best === Infinity) break;
+    if (current === targetId) break;
+    visited.add(current);
+
+    const neighbors = adjacency.get(current) || [];
+    for (const { to, weight } of neighbors) {
+      if (visited.has(to)) continue;
+      const candidate = dist.get(current) + weight;
+      if (candidate < dist.get(to)) {
+        dist.set(to, candidate);
+        prev.set(to, current);
+      }
     }
   }
 
-  if (!visited.has(targetId)) return null;
+  if (!Number.isFinite(dist.get(targetId))) return null;
   const path = [];
   let cursor = targetId;
   while (cursor) {
@@ -626,7 +734,6 @@ function applyPathEdit(path, targetId, endIndex) {
     }
     if (state.activePathId === path.pathId) {
       state.activeAppendEnd = { pathId: path.pathId, endIndex: endIndex === 0 ? 0 : existingIndex };
-      state.selectedNodeId = targetId;
     }
     return true;
   }
@@ -637,7 +744,7 @@ function applyPathEdit(path, targetId, endIndex) {
   if (isAdjacent) {
     segment = [endNodeId, targetId];
   } else {
-    segment = bfsShortestPath(endNodeId, targetId);
+    segment = shortestPathByWeight(endNodeId, targetId);
   }
 
   if (!segment) {
@@ -657,6 +764,26 @@ function applyPathEdit(path, targetId, endIndex) {
     if (state.activePathId === path.pathId) {
       state.activeAppendEnd = { pathId: path.pathId, endIndex: path.nodeIds.length - 1 };
     }
+  }
+  return true;
+}
+
+function appendAdjacentOnly(path, targetId, endIndex) {
+  const endNodeId = path.nodeIds[endIndex];
+  if (!findEdge(endNodeId, targetId)) {
+    return false;
+  }
+  if (endIndex === 0) {
+    path.nodeIds = [targetId, ...path.nodeIds];
+    if (state.activePathId === path.pathId) {
+      state.activeAppendEnd = { pathId: path.pathId, endIndex: 0 };
+    }
+    return true;
+  }
+  const trimmed = path.nodeIds.slice(0, endIndex + 1);
+  path.nodeIds = [...trimmed, targetId];
+  if (state.activePathId === path.pathId) {
+    state.activeAppendEnd = { pathId: path.pathId, endIndex: path.nodeIds.length - 1 };
   }
   return true;
 }
@@ -692,7 +819,6 @@ function handleShiftClick(targetNodeId) {
   state.paths.push(newPath);
   state.activePathId = newPath.pathId;
   state.activeAppendEnd = { pathId: newPath.pathId, endIndex: 0 };
-  state.selectedNodeId = targetNodeId;
   state.draftPathId = null;
   rebuildProtectedSets();
   updatePathsList();
@@ -705,48 +831,53 @@ function handleLeftClick(event) {
   const { x, y } = getPointerPosition(event);
   const hitNode = hitTestNode(x, y);
 
-  if (state.activePathId && !state.activeAppendEnd && hitNode && !event.shiftKey) {
+  if (state.activePathId) {
     const path = getPathById(state.activePathId);
-    const index = path.nodeIds.indexOf(hitNode.id);
-    if (index !== -1) {
-      const isEndpoint = index === 0 || index === path.nodeIds.length - 1;
-      if (!isEndpoint) {
-        showToast("Select one of the path endpoints.", "error");
+    if (!path) return;
+
+    // Endpoint selection is allowed only once when entering path edit mode.
+    if (!state.activeAppendEnd) {
+      if (hitNode) {
+        const index = path.nodeIds.indexOf(hitNode.id);
+        if (index !== -1) {
+          const isEndpoint = index === 0 || index === path.nodeIds.length - 1;
+          if (!isEndpoint) {
+            showToast("Select one of the path endpoints.", "error");
+            return;
+          }
+          state.activeAppendEnd = { pathId: path.pathId, endIndex: index };
+          updateOverlay();
+          render();
+          return;
+        }
+      }
+      showToast("Select one of the path endpoints first.", "error");
+      return;
+    }
+
+    if (event.shiftKey && hitNode) {
+      handleShiftClick(hitNode.id);
+      return;
+    }
+
+    // Normal click while editing: append only via direct adjacency.
+    if (!event.shiftKey) {
+      if (!hitNode) return;
+      const snapshot = captureSnapshot();
+      const changed = appendAdjacentOnly(path, hitNode.id, state.activeAppendEnd.endIndex);
+      if (!changed) {
+        showToast("Not adjacent. Use Shift+click for shortest path.", "error");
         return;
       }
-      state.activeAppendEnd = { pathId: path.pathId, endIndex: index };
-      state.selectedNodeId = hitNode.id;
-      updateOverlay();
+      pushSnapshot(snapshot);
+      rebuildProtectedSets();
+      updatePathsList();
       render();
       return;
     }
   }
 
-  if (state.activePathId && !event.shiftKey) {
-    // During path editing, disable graph edits (nodes/edges)
-    if (hitNode) {
-      const path = getPathById(state.activePathId);
-      const index = path ? path.nodeIds.indexOf(hitNode.id) : -1;
-      if (index !== -1) {
-        const isEndpoint = index === 0 || index === path.nodeIds.length - 1;
-        if (!isEndpoint) {
-          showToast("Select one of the path endpoints.", "error");
-          return;
-        }
-        state.activeAppendEnd = { pathId: path.pathId, endIndex: index };
-        state.selectedNodeId = hitNode.id;
-        render();
-      }
-      return;
-    }
-    return;
-  }
-
   if (event.shiftKey && hitNode) {
-    if (state.activePathId && !state.activeAppendEnd) {
-      showToast("Select an active endpoint before continuing.", "error");
-      return;
-    }
     handleShiftClick(hitNode.id);
     return;
   }
@@ -761,7 +892,7 @@ function handleLeftClick(event) {
     }
     saveSnapshot();
     const id = createNodeId();
-    const node = { id, label: id, x: world.x, y: world.y };
+    const node = { id, label: id, x: Math.round(world.x), y: Math.round(world.y) };
     state.nodes.push(node);
     if (state.selectedNodeId) {
       toggleEdge(state.selectedNodeId, id);
@@ -791,11 +922,15 @@ function handleLeftClick(event) {
   if (state.activePathId) {
     return;
   }
-  const snapshot = captureSnapshot();
-  const changed = toggleEdge(state.selectedNodeId, hitNode.id);
-  if (changed) {
-    pushSnapshot(snapshot);
+  const existing = findEdge(state.selectedNodeId, hitNode.id);
+  if (existing) {
+    state.selectedNodeId = hitNode.id;
+    render();
+    return;
   }
+  const snapshot = captureSnapshot();
+  addEdge(state.selectedNodeId, hitNode.id);
+  pushSnapshot(snapshot);
   state.selectedNodeId = hitNode.id;
   rebuildProtectedSets();
   render();
@@ -804,7 +939,12 @@ function handleLeftClick(event) {
 function handleRightClick(event) {
   if (!state.image) return;
   if (state.activePathId) {
-    showToast("Graph edits are disabled while editing a path.", "error");
+    state.activePathId = null;
+    state.activeAppendEnd = null;
+    state.selectedNodeId = null;
+    updatePathsList();
+    updateOverlay();
+    render();
     return;
   }
   const { x, y } = getPointerPosition(event);
@@ -875,15 +1015,20 @@ function startNodeLabelEdit(nodeId) {
 function commitNodeLabelEdit(apply) {
   if (!editingNodeId) return;
   const node = getNodeById(editingNodeId);
+  let changed = false;
   if (apply && node) {
     const newLabel = nodeLabelEditor.value.trim() || node.id;
     if (newLabel !== node.label) {
       saveSnapshot();
       node.label = newLabel;
+      changed = true;
     }
   }
   nodeLabelEditor.classList.add("hidden");
   editingNodeId = null;
+  if (changed) {
+    updatePathsList();
+  }
   render();
 }
 
@@ -902,7 +1047,9 @@ function render() {
 
   ctx.translate(state.viewport.panX, state.viewport.panY);
   ctx.scale(state.viewport.scale, state.viewport.scale);
+  ctx.globalAlpha = state.imageOpacity;
   ctx.drawImage(state.image.img, 0, 0);
+  ctx.globalAlpha = 1;
 
   const scale = state.viewport.scale;
   ctx.lineWidth = EDGE_WIDTH / scale;
@@ -916,6 +1063,19 @@ function render() {
     ctx.lineTo(b.x, b.y);
   });
   ctx.stroke();
+
+  // Edge weight labels (only when different from default 1)
+  ctx.fillStyle = "#334155";
+  ctx.font = `${(11 * MAP_FONT_SCALE) / scale}px "Space Grotesk"`;
+  state.edges.forEach((edge) => {
+    if (edge.weight === 1) return;
+    const a = getNodeById(edge.a);
+    const b = getNodeById(edge.b);
+    if (!a || !b) return;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    ctx.fillText(formatWeightLabel(edge.weight), midX + 4 / scale, midY - 4 / scale);
+  });
 
   // Edge overlays for paths (parallel colored lines)
   const edgePathMap = new Map();
@@ -1007,7 +1167,7 @@ function render() {
   }
 
   // Selected node highlight
-  if (state.selectedNodeId) {
+  if (state.selectedNodeId && !state.activePathId) {
     const node = getNodeById(state.selectedNodeId);
     if (node) {
       ctx.strokeStyle = "#ef6f4a";
@@ -1034,31 +1194,9 @@ function render() {
     }
   }
 
-  // Endpoint hints when editing without active end
-  if (state.activePathId && !state.activeAppendEnd) {
-    const activePath = getPathById(state.activePathId);
-    if (activePath && activePath.nodeIds.length > 0) {
-      const startNode = getNodeById(activePath.nodeIds[0]);
-      const endNode = getNodeById(activePath.nodeIds[activePath.nodeIds.length - 1]);
-      ctx.lineWidth = 3 / scale;
-      if (startNode) {
-        ctx.strokeStyle = "#2a9d8f";
-        ctx.beginPath();
-        ctx.arc(startNode.x, startNode.y, (NODE_RADIUS + 6) / scale, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if (endNode) {
-        ctx.strokeStyle = "#ef6f4a";
-        ctx.beginPath();
-        ctx.arc(endNode.x, endNode.y, (NODE_RADIUS + 6) / scale, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-  }
-
   // Node labels
   ctx.fillStyle = "#111827";
-  ctx.font = `${12 / scale}px "Space Grotesk"`;
+  ctx.font = `${(12 * MAP_FONT_SCALE) / scale}px "Space Grotesk"`;
   state.nodes.forEach((node) => {
     if (node.label !== node.id) {
       ctx.fillText(node.label, node.x + 12 / scale, node.y - 12 / scale);
@@ -1085,7 +1223,7 @@ function render() {
       const paddingY = 6;
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.font = "12px \"Space Grotesk\"";
+      ctx.font = `${Math.round(12 * MAP_FONT_SCALE)}px "Space Grotesk"`;
       const textWidth = ctx.measureText(label).width;
       const rectWidth = textWidth + paddingX * 2;
       const rectHeight = 24;
@@ -1102,11 +1240,28 @@ function render() {
 
 function handleWheel(event) {
   if (!state.image) return;
+  if (event.shiftKey) {
+    event.preventDefault();
+    const { x, y } = getPointerPosition(event);
+    const hitEdge = hitTestEdge(x, y);
+    if (!hitEdge) return;
+    const edge = findEdge(hitEdge.edge.a, hitEdge.edge.b);
+    if (!edge) return;
+    const direction = event.deltaY > 0 ? -1 : 1;
+    const nextWeight = stepEdgeWeight(edge.weight, direction);
+    if (nextWeight === edge.weight) return;
+    const before = captureSnapshot();
+    edge.weight = nextWeight;
+    pushSnapshot(before);
+    render();
+    return;
+  }
+
   event.preventDefault();
   const { x, y } = getPointerPosition(event);
   const world = screenToWorld(x, y);
   const zoom = Math.exp(-event.deltaY * 0.0015);
-  const nextScale = Math.min(6, Math.max(0.2, state.viewport.scale * zoom));
+  const nextScale = Math.min(10, Math.max(0.2, state.viewport.scale * zoom));
   state.viewport.scale = nextScale;
   state.viewport.panX = x - world.x * nextScale;
   state.viewport.panY = y - world.y * nextScale;
@@ -1120,8 +1275,27 @@ canvas.addEventListener("contextmenu", (event) => {
   handleRightClick(event);
 });
 
+canvas.addEventListener("auxclick", (event) => {
+  if (event.button === 1) {
+    event.preventDefault();
+  }
+});
+
 canvas.addEventListener("mousedown", (event) => {
   if (!state.image) return;
+  if (event.button === 1 && event.shiftKey) {
+    const { x, y } = getPointerPosition(event);
+    const hitEdge = hitTestEdge(x, y);
+    if (!hitEdge) return;
+    event.preventDefault();
+    const edge = findEdge(hitEdge.edge.a, hitEdge.edge.b);
+    if (!edge || edge.weight === 1) return;
+    const before = captureSnapshot();
+    edge.weight = 1;
+    pushSnapshot(before);
+    render();
+    return;
+  }
   if (event.button === 1 || (event.button === 0 && spaceDown)) {
     panStart = {
       x: event.clientX,
@@ -1212,6 +1386,11 @@ window.addEventListener("mouseup", () => {
   }
   if (dragNodeId) {
     if (dragMoved) {
+      const node = getNodeById(dragNodeId);
+      if (node) {
+        node.x = Math.round(node.x);
+        node.y = Math.round(node.y);
+      }
       pushSnapshot(dragSnapshot);
       suppressClick = true;
     }
@@ -1283,6 +1462,12 @@ clearProjectBtn.addEventListener("click", () => {
   clearProjectData();
 });
 
+imageOpacityInput.addEventListener("input", (event) => {
+  state.imageOpacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+  syncImageOpacityUi();
+  render();
+});
+
 
 exportJsonBtn.addEventListener("click", () => {
   const width = state.image ? state.image.width : state.expectedImage?.width;
@@ -1313,7 +1498,11 @@ exportPngBtn.addEventListener("click", () => {
   offscreen.width = state.image.width;
   offscreen.height = state.image.height;
   const octx = offscreen.getContext("2d");
+  octx.fillStyle = "#ffffff";
+  octx.fillRect(0, 0, offscreen.width, offscreen.height);
+  octx.globalAlpha = state.imageOpacity;
   octx.drawImage(state.image.img, 0, 0);
+  octx.globalAlpha = 1;
 
   const mode = pngModeSelect.value;
 
@@ -1329,6 +1518,18 @@ exportPngBtn.addEventListener("click", () => {
     octx.lineTo(b.x, b.y);
   });
   octx.stroke();
+
+  octx.fillStyle = "#334155";
+  octx.font = `${Math.round(12 * MAP_FONT_SCALE)}px 'Space Grotesk'`;
+  state.edges.forEach((edge) => {
+    if (edge.weight === 1) return;
+    const a = getNodeById(edge.a);
+    const b = getNodeById(edge.b);
+    if (!a || !b) return;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    octx.fillText(formatWeightLabel(edge.weight), midX + 4, midY - 4);
+  });
 
   // Draw paths
   const drawPath = (path, color, width, dashed) => {
@@ -1376,7 +1577,7 @@ exportPngBtn.addEventListener("click", () => {
     octx.stroke();
     if (node.label && node.label !== node.id) {
       octx.fillStyle = "#111827";
-      octx.font = "12px 'Space Grotesk'";
+      octx.font = `${Math.round(12 * MAP_FONT_SCALE)}px 'Space Grotesk'`;
       octx.fillText(node.label, node.x + 12, node.y - 12);
     }
   });
@@ -1435,10 +1636,21 @@ window.addEventListener("blur", () => {
 updatePathsList();
 updateOverlay();
 updateUndoRedoButtons();
+syncImageOpacityUi();
 render();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(() => {});
+
+    let reloadedForSw = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloadedForSw) return;
+      reloadedForSw = true;
+      window.location.reload();
+    });
   });
 }

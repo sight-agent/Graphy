@@ -56,6 +56,10 @@
 
         <section class="panel">
           <h2>Actions</h2>
+          <label class="select opacity-row opacity-inline">
+            <span>Opacity</span>
+            <input id="imageOpacity" type="range" min="0" max="100" step="1" value="100" />
+          </label>
           <div class="row">
             <button id="exportJson">Export JSON</button>
             <button id="exportPng">Export PNG</button>
@@ -78,10 +82,12 @@
         <section class="panel help">
           <h2>Shortcuts</h2>
           <ul>
-            <li><strong>Left click</strong>: create node/edge</li>
-            <li><strong>Right click</strong>: delete node/edge</li>
-            <li><strong>Shift + click</strong>: start/extend/truncate path</li>
+            <li><strong>Left click</strong>: create/connect nodes</li>
+            <li><strong>Right click</strong>: delete nodes/edges</li>
+            <li><strong>Shift + click</strong>: start/truncate/shortest path</li>
             <li><strong>Wheel</strong>: zoom/pan</li>
+            <li><strong>Shift + wheel</strong>: change edge weight</li>
+            <li><strong>Shift + wheel click</strong>: reset weight to 1</li>
             <li><strong>Ctrl+Z / Ctrl+Y</strong>: undo / redo</li>
           </ul>
         </section>
